@@ -12,7 +12,7 @@ This is a simple Python application that counts eye blinks in real-time using yo
 
 1. Clone this repository:
    ```bash
-   git clone <repo-url>
+   git clone https://github.com/wellnessatwork/eye-tracker-share
    cd eye-tracker-share
    ```
 2. Install the required dependencies:
