@@ -36,6 +36,26 @@ python eye_blink_counter.py
   ```
 - Press `ESC` in the OpenCV window to exit the application.
 
+## Build a Standalone Executable
+
+You can build a standalone binary (no Python installation required) using the provided `build_standalone.sh` script. This script uses [PyInstaller](https://www.pyinstaller.org/) and ensures the necessary MediaPipe model files are included.
+
+### How to use:
+1. Make sure you have `pyinstaller` installed:
+   ```bash
+   pip install pyinstaller
+   ```
+2. Run the build script:
+   ```bash
+   bash build_standalone.sh
+   ```
+3. The standalone executable will be created in the `dist/` directory. You can run it directly:
+   ```bash
+   ./dist/eye_blink_counter_json
+   ```
+
+> **Note:** The script is set up for a file named `eye_blink_counter_json.py`. If your main script is named differently, adjust the script or rename your file accordingly.
+
 ## Requirements
 - Python 3.7+
 - OpenCV
