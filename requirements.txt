@@ -1,3 +1,7 @@
 opencv-python
 mediapipe
-numpy 
+numpy
+
+# AWS testing/mocking
+boto3
+moto
