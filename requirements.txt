@@ -1,7 +1,7 @@
 opencv-python
 mediapipe
 numpy
-
+PyQt5
 # AWS testing/mocking
 boto3
 moto

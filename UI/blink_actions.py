@@ -11,6 +11,8 @@ These are attached via attach_blink_actions(window).
 """
 import threading
 from typing import Any
+import time
+import datetime
 
 from APIs.eye_blink_counter import count_blinks
 
@@ -27,6 +29,24 @@ def attach_blink_actions(window: Any) -> None:
             window.blink_label.setText(f"Blinks: {count}")
         except Exception:
             # be defensive if UI not ready
+            pass
+
+        # If a database and a current_user_id are present on the window, insert a blink event.
+        try:
+            db = getattr(window, 'db', None)
+            user_id = getattr(window, 'current_user_id', None)
+            if db is not None and user_id is not None:
+                ts = datetime.datetime.utcnow().isoformat()
+                epoch_ms = int(time.time() * 1000)
+                # Insert a blink event; use event_type 'blink_count' and no duration by default
+                try:
+                    db.insert_blink_event(user_id=user_id, session_id=None, event_ts=ts, event_epoch_ms=epoch_ms,
+                                           duration_ms=None, event_type='blink_count', ear=None,
+                                           source=getattr(window, 'blink_source', None), metadata=None)
+                except Exception:
+                    # don't let DB errors break the UI
+                    pass
+        except Exception:
             pass
 
     def blink_counter_stopped() -> None:
