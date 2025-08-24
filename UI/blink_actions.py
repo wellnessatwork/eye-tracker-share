@@ -9,90 +9,174 @@ It intentionally keeps the same attribute names used in the window code:
 
 These are attached via attach_blink_actions(window).
 """
-import threading
 from typing import Any
-import time
-import datetime
+import traceback
 
-from APIs.eye_blink_counter import count_blinks
+# Qt imports
+from PyQt5.QtCore import QThread, Qt
+from PyQt5.QtGui import QImage, QPixmap
+
+# numpy / cv2 for image conversion
+import cv2
+import numpy as np
+
+# worker factory
+try:
+    from APIs.eye_blink_counter import count_blinks
+except Exception:
+    count_blinks = None  # defensive: main will fail earlier if worker missing
 
 
 def attach_blink_actions(window: Any) -> None:
-    """Attach blink-related callables to the provided window instance.
+    """Attach blink-control helpers and UI callbacks to the window instance."""
 
-    The attached callables match the original method names used in the
-    `LaptopDashboard` class so existing connections (signals/slots) keep working.
-    """
-    def update_blink_count(count: int) -> None:
-        # update label text
+    def update_preview(frame: np.ndarray) -> None:
+        """Receive a BGR numpy frame from the worker and show it in preview_label."""
         try:
-            window.blink_label.setText(f"Blinks: {count}")
+            if not hasattr(window, "preview_label") or window.preview_label is None:
+                return
+            # defensive: ensure frame is a numpy array with 3 channels
+            if frame is None:
+                return
+            try:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            except Exception:
+                # if frame already RGB or conversion fails, try to coerce
+                rgb = frame
+            h, w = rgb.shape[:2]
+            ch = 3 if rgb.ndim == 3 else 1
+            bytes_per_line = ch * w
+            qimg = QImage(rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            pix = QPixmap.fromImage(qimg).scaled(window.preview_label.size(), Qt.KeepAspectRatio)
+            window.preview_label.setPixmap(pix)
         except Exception:
-            # be defensive if UI not ready
-            pass
+            # swallow exceptions to avoid thread signal errors
+            try:
+                traceback.print_exc()
+            except Exception:
+                pass
 
-        # If a database and a current_user_id are present on the window, insert a blink event.
+    def update_blink_count(count: int) -> None:
         try:
-            db = getattr(window, 'db', None)
-            user_id = getattr(window, 'current_user_id', None)
-            if db is not None and user_id is not None:
-                ts = datetime.datetime.utcnow().isoformat()
-                epoch_ms = int(time.time() * 1000)
-                # Insert a blink event; use event_type 'blink_count' and no duration by default
-                try:
-                    db.insert_blink_event(user_id=user_id, session_id=None, event_ts=ts, event_epoch_ms=epoch_ms,
-                                           duration_ms=None, event_type='blink_count', ear=None,
-                                           source=getattr(window, 'blink_source', None), metadata=None)
-                except Exception:
-                    # don't let DB errors break the UI
-                    pass
+            if hasattr(window, "blink_label") and window.blink_label:
+                window.blink_label.setText(f"Blinks: {count}")
         except Exception:
             pass
 
     def blink_counter_stopped() -> None:
-        window.blink_worker = None
-        window.blink_thread = None
+        """Called when worker finished or when stop requested."""
         try:
-            window.blink_btn.setText("Start Eye Blink Counter")
+            if hasattr(window, "blink_btn") and window.blink_btn:
+                window.blink_btn.setText("Start Eye Blink Counter")
         except Exception:
             pass
 
+        # stop & clean up QThread/worker references
+        try:
+            th = getattr(window, "blink_thread", None)
+            if th is not None:
+                try:
+                    th.quit()
+                    th.wait(1000)
+                except Exception:
+                    pass
+        finally:
+            window.blink_worker = None
+            window.blink_thread = None
+
     def toggle_blink_counter() -> None:
-        # start/stop a worker provided by APIs.eye_blink_counter
+        """Start or stop the blink worker in a QThread and connect signals."""
+        # If no worker is running -> start
         if getattr(window, "blink_worker", None) is None:
-            # count_blinks() is expected to return a worker-like object with
-            # signals `blink_count_updated` and `finished`, and methods `run` and `stop`.
-            window.blink_worker = count_blinks()
-            # Connect signals if the worker provides them
+            if count_blinks is None:
+                # cannot start worker
+                try:
+                    if hasattr(window, "output"):
+                        window.output.append("Blink worker factory not available (count_blinks).")
+                except Exception:
+                    pass
+                return
+
+            # create worker and thread
             try:
-                window.blink_worker.blink_count_updated.connect(window.update_blink_count)
+                worker = count_blinks()
+            except Exception as e:
+                try:
+                    if hasattr(window, "output"):
+                        window.output.append(f"Failed to create blink worker: {e}")
+                except Exception:
+                    pass
+                return
+
+            thread = QThread()
+            # move worker into thread (worker must be a QObject for this to work)
+            try:
+                worker.moveToThread(thread)
+            except Exception:
+                # if worker is not QObject, we'll run it in the thread using a wrapper
+                pass
+
+            # connect signals if present
+            try:
+                if getattr(worker, "frame_ready", None) is not None:
+                    worker.frame_ready.connect(update_preview)
             except Exception:
                 pass
             try:
-                window.blink_worker.finished.connect(window.blink_counter_stopped)
-            except Exception:
-                pass
-            # Start worker in a background thread if it exposes a run() method
-            if hasattr(window.blink_worker, "run"):
-                window.blink_thread = threading.Thread(target=window.blink_worker.run, daemon=True)
-                window.blink_thread.start()
-            # update button text
-            try:
-                window.blink_btn.setText("Stop Eye Blink Counter")
-            except Exception:
-                pass
-        else:
-            # Stop the worker if possible
-            try:
-                window.blink_worker.stop()
+                if getattr(worker, "blink_count_updated", None) is not None:
+                    worker.blink_count_updated.connect(update_blink_count)
             except Exception:
                 pass
             try:
-                window.blink_btn.setText("Start Eye Blink Counter")
+                if getattr(worker, "finished", None) is not None:
+                    worker.finished.connect(blink_counter_stopped)
             except Exception:
                 pass
 
-    # Attach to window
+            # start the worker.run when thread starts
+            try:
+                thread.started.connect(worker.run)
+            except Exception:
+                # fallback: start a thread that calls run directly
+                def _run_wrapper():
+                    try:
+                        worker.run()
+                    finally:
+                        # ensure finished/cleanup executed in main thread via signal if available
+                        try:
+                            if getattr(worker, "finished", None) is not None:
+                                worker.finished.emit()  # type: ignore
+                        except Exception:
+                            pass
+
+                thread.run = _run_wrapper  # type: ignore
+
+            # store refs and start
+            window.blink_worker = worker
+            window.blink_thread = thread
+            thread.start()
+
+            try:
+                if hasattr(window, "blink_btn") and window.blink_btn:
+                    window.blink_btn.setText("Stop Eye Blink Counter")
+            except Exception:
+                pass
+        else:
+            # stop running worker
+            try:
+                if getattr(window.blink_worker, "stop", None) is not None:
+                    window.blink_worker.stop()
+            except Exception:
+                pass
+            # let finished signal / blink_counter_stopped handle the rest
+            try:
+                if hasattr(window, "blink_btn") and window.blink_btn:
+                    window.blink_btn.setText("Start Eye Blink Counter")
+            except Exception:
+                pass
+
+    # Attach functions to the window instance for later use
+    window.toggle_blink_counter = toggle_blink_counter
     window.update_blink_count = update_blink_count
     window.blink_counter_stopped = blink_counter_stopped
-    window.toggle_blink_counter = toggle_blink_counter
+    window.update_preview = update_preview

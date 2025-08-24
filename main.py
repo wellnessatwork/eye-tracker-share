@@ -6,7 +6,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit, QLineEdit
-from PyQt5.QtWidgets import QHBoxLayout, QTabWidget
+from PyQt5.QtWidgets import QHBoxLayout, QTabWidget, QSizePolicy
 from PyQt5.QtCore import QTimer, Qt
 from APIs.database import DatabaseHandler
 import APIs.system_monitor as sm
@@ -19,7 +19,7 @@ import psutil
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PyQt SQLite + System Monitor + Blink Counter")
+        self.setWindowTitle("WaW Tracker")
         self.resize(600, 500)
 
         self.db = DatabaseHandler()
@@ -53,6 +53,14 @@ class MainWindow(QMainWindow):
         self.blink_label = QLabel("Blinks: 0")
         self.blink_label.setAlignment(Qt.AlignCenter)
         tracker_layout.addWidget(self.blink_label)
+
+        # preview area for camera frames
+        self.preview_label = QLabel()
+        self.preview_label.setMinimumSize(320, 240)
+        self.preview_label.setStyleSheet("background: #000;")
+        self.preview_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        tracker_layout.addWidget(self.preview_label, stretch=1)
 
         self.blink_btn = QPushButton("Start Eye Blink Counter")
         # Defer lookup of the toggle function (it is attached after init via attach_blink_actions)
