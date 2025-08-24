@@ -97,6 +97,25 @@ class DatabaseHandler:
         conn.close()
         return rows
 
+    def delete_all_users(self) -> int:
+        """Delete all users and return how many user rows were removed.
+        Blink events and aggregates tied to users will be removed if foreign keys are
+        configured with ON DELETE CASCADE.
+        """
+        conn = self._connect()
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT COUNT(*) FROM users")
+                count = cur.fetchone()[0] or 0
+            except Exception:
+                count = 0
+            cur.execute("DELETE FROM users")
+            conn.commit()
+            return count
+        finally:
+            conn.close()
+
     # --- Blink event helpers ---
     def insert_blink_event(self, user_id, session_id, event_ts, event_epoch_ms, duration_ms=None, event_type=None, ear=None, source=None, metadata=None):
         conn = self._connect()

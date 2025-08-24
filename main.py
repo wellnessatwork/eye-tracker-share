@@ -87,12 +87,16 @@ class MainWindow(QMainWindow):
         btn_del.clicked.connect(lambda: delete_user_prompt(self.db, self.output))
         btn_update = QPushButton("Update Users")
         btn_update.clicked.connect(lambda: update_user_prompt(self.db, self.output))
+        # new: show blink events button
+        btn_show_blinks = QPushButton("Show Blinks")
+        btn_show_blinks.clicked.connect(lambda: self.show_blink_events())
 
         button_row = QHBoxLayout()
         button_row.addWidget(btn_add)
         button_row.addWidget(btn_show)
         button_row.addWidget(btn_del)
         button_row.addWidget(btn_update)
+        button_row.addWidget(btn_show_blinks)
         admin_layout.addLayout(button_row)
 
         # Command processing button (processes commands typed into the output area)
@@ -147,6 +151,36 @@ class MainWindow(QMainWindow):
             # keep previous values on failure
             pass
 
+    def show_blink_events(self, user_id: int = None, limit: int = 200) -> None:
+        """Query blink_events and write formatted rows to the admin output widget."""
+        try:
+            rows = self.db.get_blink_events(user_id=user_id, limit=limit)
+        except Exception as e:
+            self.output.append(f"Error querying blink events: {e}")
+            return
+
+        if not rows:
+            self.output.append("No blink events found.")
+            return
+
+        self.output.append(f"Showing up to {limit} blink events (most recent first):")
+        for r in rows:
+            # r is: id, user_id, session_id, event_ts, event_epoch_ms, duration_ms, event_type, ear, source, metadata
+            event_id, uid, session_id, event_ts, epoch_ms, duration_ms, event_type, ear, source, metadata = r
+            parts = [
+                f"id={event_id}",
+                f"user_id={uid}",
+                f"session={session_id or '-'}",
+                f"ts={event_ts}",
+                f"epoch_ms={epoch_ms}",
+                f"duration_ms={duration_ms if duration_ms is not None else '-'}",
+                f"type={event_type or '-'}",
+                f"ear={ear if ear is not None else '-'}",
+                f"src={source or '-'}",
+            ]
+            if metadata:
+                parts.append(f"meta={metadata}")
+            self.output.append(" | ".join(parts))
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
